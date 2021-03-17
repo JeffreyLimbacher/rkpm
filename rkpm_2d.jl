@@ -1,5 +1,6 @@
 using LinearAlgebra
 using Plots
+using VoronoiDelaunay
 
 function get_domain(x_pts)
     np = length(x_pts)
@@ -19,17 +20,82 @@ function get_Hx(x_x_I, order)
     hx
 end
 
+function get_Hx_from_diff_mat(x_x_I, order)
+    Hx_size = Int((order+1)*(order+2)/2)
+    n_eval = size(x_x_I, 1)
+    n_pts = size(x_x_I, 2)
+    Hx = zeros(n_eval, n_pts, Hx_size)
+    Threads.@threads for i=1:n_pts
+        for j=1:n_eval
+            Hx[i, j, :] = get_Hx(x_x_I[i,j,:], order)
+        end
+    end
+    Hx
+end
+
+function get_diff_matrix(x_I, x)
+    n_pts = size(x, 1)
+    n_eval = size(x_I, 1)
+    x_x_I = zeros(n_eval, n_pts, 2)
+    for i=1:2
+        x_x_I[:,:,i] = X[:,i] .- X_I[:,i]'
+    end
+    x_x_I
+end
+
+function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
+    n_eval = size(x_x_I, 1)
+    Hx_size = size(Hx_x_I, 3)
+    B = zeros(Hx_size, n_eval)
+    H0 = zeros(Hx_size)
+    H0[1] = 1
+    Threads.@threads for i=1:n_eval
+        Mx = zeros(Hx_size, Hx_size)
+        for j=1:n_pts
+            H_np = Hx_x_I[i, j, :]
+            H_np2 = H_np * H_np'
+            Mx += H_np2 .* phi_a[i,j]
+        end
+        # eq. 5.9
+        B[:,i] = Mx \ H0
+    end
+    B
+end
+
+
+
+function rkpm_shape_funcs(x::Matrix{Float64}, x_I::Matrix{Float64}, order)
+    x_x_I = get_diff_matrix(x, x_I)
+    Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
+    phi_a = basis(x_x_I)
+    B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
+
+    psi = zeros(n_pts, n_pts)
+    Threads.@threads for i=1:n_pts
+        for j=1:n_pts
+            # eq (5.10)
+            psi[j,i] = B[:,j]' * Hx_x_I[j, i, :] .* phi_a[j,i]
+        end
+    end
+    psi
+end
+
 function jitter!(X, scale)
     X += rand(size(X)...) .* scale
 end
 
-step_size = .2
-domain = -2:step_size:2
+function tesselate(x)
+    tess = DelaunayTessellation()
+    push!(tess, [Point(x[i, :]...) for i=1:size(x,1)])
+    tess
+end
+
+step_size = .1
+domain = 0:step_size:5
 domain_sample = domain[1:1:end]
-prod_d = x-> Iterators.product(x, x)
 
 # our test function
-f = (x,y) -> cos(x * pi ) + sin(y * pi)
+f = (x,y) -> cos(x * pi) + sin(y * pi)
 X_I = get_domain(domain_sample)
 n_pts = size(X_I,1)
 Y_I = f.(X_I[:,1], X_I[:,2])
@@ -52,53 +118,20 @@ function bspline(z)
         0
     end
 end
-basis = x -> bspline.(sqrt.(sum(x.^2,dims=3))/a)/a
 
-#x-x_I matrix, x_x_I[j,i] is x-x_I at point x=x_j
-x_x_I = zeros(n_eval, n_pts, 2)
-for i=1:2
-    x_x_I[:,:,i] = X[:,i] .- X_I[:,i]'
+function basis(x)
+    bspline.(sqrt.(sum(x.^2,dims=3))/a)/a
 end
+
+
+x_x_I = get_diff_matrix(X_I, X_I)
+Hx_x_I = get_Hx_from_diff_mat(x_x_I, 3)
 phi_a = basis(x_x_I)
-order = 4
-Hx_size = Int((order+1)*(order+2)/2)
-Mx = zeros(Hx_size, Hx_size, n_eval)
-for i=1:n_eval
-    Hx = Mx[:, :, i]
-    for j=1:n_pts
-        if phi_a[i,j] <= 1e-10
-            continue
-        end
-        H_np = get_Hx(x_x_I[i, j, :], order)
-        H_np2 = H_np * H_np'
-        Hx += H_np2 .* phi_a[i,j]
-    end
-    Mx[:, :, i] = Hx
-end
-
-B = zeros(Hx_size, n_eval)
-H0 = zeros(Hx_size)
-H0[1] = 1
-for i=1:n_eval
-    # eq. 5.9
-    B[:,i] = Mx[:,:,i] \ H0
-end
-
-# get kronecker 
-psi = zeros(n_pts, n_pts)
-for i=1:n_pts
-    for j=1:n_eval
-        # eq (5.10)
-        psi[j,i] = B[:,j]' * get_Hx(x_x_I[j, i, :], order) .* phi_a[j,i]
-    end
-end
-
-u_h = psi * Y_I
-psi_inv = inv(psi)
-u_I = psi_inv * u_h
+@time psi = rkpm_shape_funcs(X_I, X_I, 2)
+u_I = psi * Y_I
 
 
 #surface(X[:,1], X[:,2], u_h[:,1])
-surface(X[:,1], X[:,2], (u_I[:,1]-Y), legend=false)
-@show sum(abs.(u_h-Y))/sum(abs.(Y))
+surface(X[:,1], X[:,2], u_I, legend=false)
+#@show sum(abs.(u_h-Y))/sum(abs.(Y))
 #p=scatter(X[:,1], X[:,2], zeros(length(X[:,1])))
