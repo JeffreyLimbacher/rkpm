@@ -109,7 +109,7 @@ end
 
 step_size = .1
 domain = 0:step_size:5
-domain_sample = domain[1:1:end]
+domain_sample = domain[1:2:end]
 
 # our test function
 f = (x,y) -> CUDA.cos(x * pi) + CUDA.sin(y * pi)
@@ -143,16 +143,12 @@ function basis(x, a::Float32)
     dropdims(z,dims=3)
 end
 
-
+# Get psi following RK method
 x_x_I = get_diff_matrix(X_I, X_I)
 Hx_x_I = get_Hx_from_diff_mat(x_x_I, 3)
-
 phi_a = basis(x_x_I, Float32(a))
 B = cu_get_coefficients(x_x_I, Hx_x_I, phi_a, 3)
 psi = get_psi(Hx_x_I, B, phi_a)
-#@time psi = rkpm_shape_funcs(X_I, X_I, 2)
+
 u_h = psi * Y_I
 surface(X[:,1], X[:,2], u_h[:,1])
-#surface(X[:,1], X[:,2], u_I, legend=false)
-#@show sum(abs.(u_h-Y))/sum(abs.(Y))
-#p=scatter(X[:,1], X[:,2], zeros(length(X[:,1])))
