@@ -56,25 +56,6 @@ function get_diff_matrix(x_I, x)
     x_x_I = x_I_l .- x_I_r
 end
 
-function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
-    n_eval = size(x_x_I, 1)
-    Hx_size = size(Hx_x_I, 3)
-    B = zeros(Hx_size, n_eval)
-    H0 = zeros(Hx_size)
-    H0[1] = 1
-    for i=1:n_eval
-        Mx = zeros(Hx_size, Hx_size)
-        for j=1:n_pts
-            H_np = Hx_x_I[i, j, :]
-            H_np2 = H_np * H_np'
-            Mx += H_np2 .* phi_a[i,j]
-        end
-        # eq. 5.9
-        B[:,i] = Mx \ H0
-    end
-    B
-end
-
 function cu_get_coefficients(x_x_I, Hx_x_I, phi_a, order)
     n_eval = size(phi_a, 1)
     n_pts = size(phi_a, 2)
