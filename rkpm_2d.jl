@@ -24,10 +24,10 @@ function get_Hx_from_diff_mat(x_x_I, order)
     Hx_size = Int((order+1)*(order+2)/2)
     n_eval = size(x_x_I, 1)
     n_pts = size(x_x_I, 2)
-    Hx = zeros(n_eval, n_pts, Hx_size)
+    Hx = zeros(Hx_size, n_eval, n_pts)
     Threads.@threads for i=1:n_pts
         for j=1:n_eval
-            Hx[i, j, :] = get_Hx(x_x_I[i,j,:], order)
+            Hx[:, i, j] = get_Hx(x_x_I[i,j,:], order)
         end
     end
     Hx
@@ -45,14 +45,14 @@ end
 
 function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
     n_eval = size(x_x_I, 1)
-    Hx_size = size(Hx_x_I, 3)
+    Hx_size = size(Hx_x_I, 1)
     B = zeros(Hx_size, n_eval)
     H0 = zeros(Hx_size)
     H0[1] = 1
     Threads.@threads for i=1:n_eval
         Mx = zeros(Hx_size, Hx_size)
         for j=1:n_pts
-            H_np = Hx_x_I[i, j, :]
+            H_np = Hx_x_I[:, i, j]
             H_np2 = H_np * H_np'
             Mx += H_np2 .* phi_a[i,j]
         end
@@ -62,32 +62,41 @@ function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
     B
 end
 
-
-
-function rkpm_shape_funcs(x::Matrix{Float64}, x_I::Matrix{Float64}, order)
-    x_x_I = get_diff_matrix(x, x_I)
-    Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
-    phi_a = basis(x_x_I)
-    B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
-
+function calc_psi(B, Hx_x_I, phi_a)
+    n_eval = size(phi_a, 2)
+    n_pts = size(phi_a, 2)
     psi = zeros(n_pts, n_pts)
     Threads.@threads for i=1:n_pts
         for j=1:n_pts
             # eq (5.10)
-            psi[j,i] = B[:,j]' * Hx_x_I[j, i, :] .* phi_a[j,i]
+            psi[j,i] = B[:,j]' * Hx_x_I[:, j, i] .* phi_a[j,i]
         end
     end
     psi
 end
 
-function jitter!(X, scale)
-    X += rand(size(X)...) .* scale
+
+function rkpm_shape_funcs(x::Matrix{Float64}, x_I::Matrix{Float64}, order::Int, a::Float64)
+    @time x_x_I = get_diff_matrix(x, x_I)
+    @time Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
+    @time phi_a = basis(x_x_I, a)
+    @time B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
+    @time calc_psi(B, Hx_x_I, phi_a)
 end
 
-function tesselate(x)
-    tess = DelaunayTessellation()
-    push!(tess, [Point(x[i, :]...) for i=1:size(x,1)])
-    tess
+function bspline(z)
+    zabs = abs(z)
+    if zabs <= 0.5
+        2.0/3.0 - 4z^2 + 4z^3
+    elseif zabs <= 1.0
+        4.0/3.0 * (1-z)^3
+    else
+        0
+    end
+end
+
+function basis(x, a)
+    bspline.(sqrt.(sum(x.^2,dims=3))/a)/a
 end
 
 step_size = .1
@@ -108,26 +117,7 @@ n_eval = size(X,1)
 # support size
 a = 0.3 .* (X_I[end]-X_I[1])
 
-function bspline(z)
-    zabs = abs(z)
-    if zabs <= 0.5
-        2.0/3.0 - 4z^2 + 4z^3
-    elseif zabs <= 1.0
-        4.0/3.0 * (1-z)^3
-    else
-        0
-    end
-end
-
-function basis(x)
-    bspline.(sqrt.(sum(x.^2,dims=3))/a)/a
-end
-
-
-x_x_I = get_diff_matrix(X_I, X_I)
-Hx_x_I = get_Hx_from_diff_mat(x_x_I, 3)
-phi_a = basis(x_x_I)
-@time psi = rkpm_shape_funcs(X_I, X_I, 2)
+psi = rkpm_shape_funcs(X_I, X_I, 2, a)
 u_I = psi * Y_I
 
 
