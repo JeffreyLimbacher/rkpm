@@ -50,13 +50,9 @@ function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
     H0 = zeros(Hx_size)
     H0[1] = 1
     Threads.@threads for i=1:n_eval
-        Mx = zeros(Hx_size, Hx_size)
-        for j=1:n_pts
-            H_np = Hx_x_I[:, i, j]
-            H_np2 = H_np * H_np'
-            Mx += H_np2 .* phi_a[i,j]
-        end
         # eq. 5.9
+        H_np = Hx_x_I[:, i, :]
+        Mx = H_np * (H_np' .* phi_a[i, :])
         B[:,i] = Mx \ H0
     end
     B
@@ -76,8 +72,8 @@ function calc_psi(B, Hx_x_I, phi_a)
 end
 
 
-function rkpm_shape_funcs(x::Matrix{Float64}, x_I::Matrix{Float64}, order::Int, a::Float64)
-    @time x_x_I = get_diff_matrix(x, x_I)
+function rkpm_shape_funcs(x::Matrix{Float64}, order::Int, a::Float64)
+    @time x_x_I = get_diff_matrix(x, x)
     @time Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
     @time phi_a = basis(x_x_I, a)
     @time B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
@@ -117,11 +113,11 @@ n_eval = size(X,1)
 # support size
 a = 0.3 .* (X_I[end]-X_I[1])
 
-psi = rkpm_shape_funcs(X_I, X_I, 2, a)
+psi = rkpm_shape_funcs(X_I, 2, a)
 u_I = psi * Y_I
 
 
 #surface(X[:,1], X[:,2], u_h[:,1])
 surface(X[:,1], X[:,2], u_I, legend=false)
-#@show sum(abs.(u_h-Y))/sum(abs.(Y))
 #p=scatter(X[:,1], X[:,2], zeros(length(X[:,1])))
+#@show sum(abs.(u_h-Y))/sum(abs.(Y))
