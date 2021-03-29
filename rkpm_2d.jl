@@ -95,7 +95,7 @@ domain = 0:step_size:5
 domain_sample = domain[1:1:end]
 
 # our test function
-f = (x,y) -> cos(x * pi) + sin(y * pi)
+f = (x,y) -> x + cos(x * pi) + sin(y * pi)
 X_I = get_domain(domain_sample)
 n_pts = size(X_I,1)
 Y_I = f.(X_I[1,:], X_I[2,:])
@@ -110,4 +110,4 @@ a = 0.3 .* (X_I[end]-X_I[1])
 
 psi = rkpm_shape_funcs(X_I, 3, a)
 u_I = psi * Y_I
-surface(X[:,1], X[:,2], u_I, legend=false)
+surface(X[1,:], X[2,:], u_I, legend=false)
