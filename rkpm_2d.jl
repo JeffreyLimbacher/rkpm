@@ -10,24 +10,23 @@ function get_domain(x_pts)
     reshape(x, np * np, 2)
 end
 
-#x_x_I is the vector of differences between the points
-function get_Hx(x_x_I, order)
-    exps = [(i, j) for i=0:order for j=0:order if i+j<=order]
-    hx = zeros(length(exps))
-    for (i,exp) in enumerate(exps)
-        hx[i] = prod(x_x_I.^exp)
-    end
-    hx
-end
-
 function get_Hx_from_diff_mat(x_x_I, order)
+    function get_Hx!(x_x_I, order, hx)
+        k = 1
+        for i=0:order
+            for j=0:(order-i)
+                hx[k] = prod(x_x_I[1]^i * x_x_I[2]^j)
+                k += 1
+            end
+        end
+    end
     Hx_size = Int((order+1)*(order+2)/2)
     n_eval = size(x_x_I, 1)
     n_pts = size(x_x_I, 2)
     Hx = zeros(Hx_size, n_eval, n_pts)
     Threads.@threads for i=1:n_pts
         for j=1:n_eval
-            Hx[:, i, j] = get_Hx(x_x_I[i,j,:], order)
+            @views get_Hx!(x_x_I[i,j,:], order, Hx[:, i, j])
         end
     end
     Hx
@@ -113,7 +112,7 @@ n_eval = size(X,1)
 # support size
 a = 0.3 .* (X_I[end]-X_I[1])
 
-psi = rkpm_shape_funcs(X_I, 2, a)
+psi = rkpm_shape_funcs(X_I, 3, a)
 u_I = psi * Y_I
 
 
