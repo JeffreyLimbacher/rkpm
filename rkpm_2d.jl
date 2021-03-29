@@ -68,11 +68,11 @@ end
 
 
 function rkpm_shape_funcs(x::Matrix{Float64}, order::Int, a::Float64)
-    @time x_x_I = get_diff_matrix(x, x)
-    @time Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
-    @time phi_a = basis(x_x_I, a)
-    @time B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
-    @time calc_psi(B, Hx_x_I, phi_a)
+    x_x_I = get_diff_matrix(x, x)
+    Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
+    phi_a = basis(x_x_I, a)
+    B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
+    calc_psi(B, Hx_x_I, phi_a)
 end
 
 function bspline(z)
