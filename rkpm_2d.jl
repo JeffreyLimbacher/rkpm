@@ -4,9 +4,9 @@ using VoronoiDelaunay
 
 function get_domain(x_pts)
     np = length(x_pts)
-    x = zeros(np, np, 2)
-    x[:, :, 1] .= x_pts
-    x[:, :, 2] .= x_pts'
+    x = zeros(2, np, np)
+    x[1, :, :] .= x_pts
+    x[2, :, :] .= x_pts'
     reshape(x, np * np, 2)
 end
 
@@ -21,29 +21,25 @@ function get_Hx_from_diff_mat(x_x_I, order)
         end
     end
     Hx_size = Int((order+1)*(order+2)/2)
-    n_eval = size(x_x_I, 1)
-    n_pts = size(x_x_I, 2)
+    n_eval = size(x_x_I, 2)
+    n_pts = size(x_x_I, 3)
     Hx = zeros(Hx_size, n_eval, n_pts)
     Threads.@threads for i=1:n_pts
         for j=1:n_eval
-            @views get_Hx!(x_x_I[i,j,:], order, Hx[:, i, j])
+            @views get_Hx!(x_x_I[:,i,j], order, Hx[:, i, j])
         end
     end
     Hx
 end
 
 function get_diff_matrix(x_I, x)
-    n_pts = size(x, 1)
-    n_eval = size(x_I, 1)
-    x_x_I = zeros(n_eval, n_pts, 2)
-    for i=1:2
-        x_x_I[:,:,i] = X[:,i] .- X_I[:,i]'
-    end
-    x_x_I
+    x_I_r = reshape(X_I,2,1,size(X_I,1))
+    x_I_l = reshape(X_I,2,size(X_I,1),1)
+    x_I_r .- x_I_l
 end
 
 function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
-    n_eval = size(x_x_I, 1)
+    n_eval = size(x_x_I, 2)
     Hx_size = size(Hx_x_I, 1)
     B = zeros(Hx_size, n_eval)
     H0 = zeros(Hx_size)
@@ -58,10 +54,10 @@ function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
 end
 
 function calc_psi(B, Hx_x_I, phi_a)
-    n_eval = size(phi_a, 2)
+    n_eval = size(phi_a, 1)
     n_pts = size(phi_a, 2)
     psi = zeros(n_pts, n_pts)
-    Threads.@threads for i=1:n_pts
+    Threads.@threads for i=1:n_eval
         for j=1:n_pts
             # eq (5.10)
             psi[j,i] = B[:,j]' * Hx_x_I[:, j, i] .* phi_a[j,i]
@@ -91,7 +87,7 @@ function bspline(z)
 end
 
 function basis(x, a)
-    bspline.(sqrt.(sum(x.^2,dims=3))/a)/a
+    dropdims(bspline.(sqrt.(sum(x.^2,dims=1))/a)/a;dims=1)
 end
 
 step_size = .1
