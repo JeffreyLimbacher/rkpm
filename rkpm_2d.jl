@@ -24,17 +24,17 @@ function get_Hx_from_diff_mat(x_x_I, order)
     n_eval = size(x_x_I, 2)
     n_pts = size(x_x_I, 3)
     Hx = zeros(Hx_size, n_eval, n_pts)
-    Threads.@threads for i=1:n_pts
-        for j=1:n_eval
+    Threads.@threads for i=1:n_eval
+        for j=1:n_pts
             @views get_Hx!(x_x_I[:,i,j], order, Hx[:, i, j])
         end
     end
     Hx
 end
 
-function get_diff_matrix(x_I, x)
-    x_I_r = reshape(X_I,2,1,size(X_I,2))
-    x_I_l = reshape(X_I,2,size(X_I,2),1)
+function get_diff_matrix(x, x_I)
+    x_I_r = reshape(x_I,2,1,size(x_I,2))
+    x_I_l = reshape(x,2,size(x,2),1)
     x_I_l .- x_I_r
 end
 
@@ -56,9 +56,9 @@ end
 function calc_psi(B, Hx_x_I, phi_a)
     n_eval = size(phi_a, 1)
     n_pts = size(phi_a, 2)
-    psi = zeros(n_pts, n_pts)
-    Threads.@threads for i=1:n_eval
-        for j=1:n_pts
+    psi = zeros(n_eval, n_pts)
+    Threads.@threads for j=1:n_eval
+        for i=1:n_pts
             # eq (5.10)
             psi[j,i] = B[:,j]' * Hx_x_I[:, j, i] .* phi_a[j,i]
         end
@@ -67,8 +67,8 @@ function calc_psi(B, Hx_x_I, phi_a)
 end
 
 
-function rkpm_shape_funcs(x::Matrix{Float64}, order::Int, a::Float64)
-    x_x_I = get_diff_matrix(x, x)
+function rkpm_shape_funcs(x::Matrix{Float64}, x_i::Matrix{Float64}, order::Int, a::Float64)
+    x_x_I = get_diff_matrix(x, x_i)
     Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
     phi_a = basis(x_x_I, a)
     B = get_coefficients(x_x_I, Hx_x_I, phi_a, order)
@@ -92,7 +92,7 @@ end
 
 step_size = .1
 domain = 0:step_size:5
-domain_sample = domain[1:1:end]
+domain_sample = domain[1:2:end]
 
 # our test function
 f = (x,y) -> x + cos(x * pi) + sin(y * pi)
@@ -108,6 +108,6 @@ n_eval = size(X,1)
 # support size
 a = 0.3 .* (X_I[end]-X_I[1])
 
-psi = rkpm_shape_funcs(X_I, 3, a)
+psi = rkpm_shape_funcs(X, X_I, 3, a)
 u_I = psi * Y_I
 surface(X[1,:], X[2,:], u_I, legend=false)
