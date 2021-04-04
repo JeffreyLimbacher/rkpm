@@ -44,7 +44,7 @@ function get_Hx_from_diff_mat(x_x_I, order)
     n_eval = size(x_x_I, 1)
     n_pts = size(x_x_I, 2)
     Hx = CUDA.zeros(Hx_size, n_eval, n_pts)
-    CUDA.@cuda threads=(16,16) hx_kernel(x_x_I, Hx, order)
+    CUDA.@cuda threads=(32,32) hx_kernel(x_x_I, Hx, order)
     Hx
 end
 
@@ -126,13 +126,17 @@ function basis(x, a::Float32)
     dropdims(z,dims=3)
 end
 
-# Get psi following RK method
-x_x_I = get_diff_matrix(X_I, X_I)
-Hx_x_I = get_Hx_from_diff_mat(x_x_I, 3)
-phi_a = basis(x_x_I, Float32(a))
-B = cu_get_coefficients(x_x_I, Hx_x_I, phi_a, 3)
-psi = get_psi(Hx_x_I, B, phi_a)
+function rkpm_shape_funcs(X_I, order)
+    # Get psi following RK method
+    x_x_I = get_diff_matrix(X_I, X_I)
+    Hx_x_I = get_Hx_from_diff_mat(x_x_I, order)
+    phi_a = basis(x_x_I, Float32(a))
+    B = cu_get_coefficients(x_x_I, Hx_x_I, phi_a, order)
+    psi = get_psi(Hx_x_I, B, phi_a)
+end
 
+println("Running RKPM")
+CUDA.@profile psi = rkpm_shape_funcs(X_I, 2)
 u_h = Array(psi * Y_I)
 X_Icpu = Array(X)
 surface(X_Icpu[:,1], X_Icpu[:,2], u_h[:,1])

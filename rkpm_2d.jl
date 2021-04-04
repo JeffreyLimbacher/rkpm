@@ -10,12 +10,24 @@ function get_domain(x_pts)
     reshape(x, 2, np * np)
 end
 
+function get_Hx_size(order, dim)
+    if dim == 1
+        order
+    elseif dim == 2
+        Int((order+1)*(order+2)/2)
+    elseif dim == 3
+        Int((order+1)*(order+2)*(order+3)/6)
+    else
+        throw("Only supports 1, 2, or 3 dimensions")
+    end
+end
+
 function get_Hx_from_diff_mat(x_x_I, order)
     function get_Hx!(x_x_I, order, hx)
         k = 1
         for i=0:order
             for j=0:(order-i)
-                hx[k] = prod(x_x_I[1]^i * x_x_I[2]^j)
+                hx[k] = x_x_I[1]^i * x_x_I[2]^j
                 k += 1
             end
         end
@@ -24,9 +36,64 @@ function get_Hx_from_diff_mat(x_x_I, order)
     n_eval = size(x_x_I, 2)
     n_pts = size(x_x_I, 3)
     Hx = zeros(Hx_size, n_eval, n_pts)
-    Threads.@threads for i=1:n_eval
-        for j=1:n_pts
+    Threads.@threads for j=1:n_pts
+        for i=1:n_eval
             @views get_Hx!(x_x_I[:,i,j], order, Hx[:, i, j])
+        end
+    end
+    Hx
+end
+
+function get_Hx(x_x_I, basis_order, dx_order)::Array{Float64, 4}
+    function fast_sub(start, n)
+        # Benching showed that this was way faster than any sort of array stuff
+        # no allocations
+        temp = 1
+        for i=(start-n+1):(start)
+            temp *= i
+        end
+        temp
+    end
+    function dpx(x, base_exp, n_derivs)
+        # calculate derivative of x^base_exp
+        if (n_derivs == 0)
+            return x ^ base_exp
+        end
+        if (base_exp < n_derivs)
+            return 0
+        end
+        coef = fast_sub(base_exp, n_derivs)
+        exp = base_exp - n_derivs
+        return coef * (x ^ exp)
+    end
+    function dHx!(x_x_I, order, n_d, Hx)
+        for h=0:n_d
+            i_d = n_d-h
+            j_d = h
+            k = 1
+            for i=0:order
+                for j=0:(order-i)
+                    xi = dpx(x_x_I[1], i, i_d)
+                    xj = dpx(x_x_I[2], j, j_d)
+                    Hx[k,h+1] = xi*xj
+                    k += 1
+                end
+            end
+        end
+    end
+    if (dx_order == 0)
+        Hx = get_Hx_from_diff_mat(x_x_I, basis_order)
+        Hxs = size(Hx)
+        Hx = reshape(Hx, size(Hx,1), 1, size(Hx,2), size(Hx,3))
+        return Hx
+    end
+    Hx_size = get_Hx_size(basis_order, 2)
+    n_eval = size(x_x_I, 2)
+    n_pts = size(x_x_I, 3)
+    Hx = zeros(Hx_size, dx_order+1, n_eval, n_pts)
+    Threads.@threads for j=1:n_pts
+        for i=1:n_eval
+            @views dHx!(x_x_I[:,i,j], basis_order, dx_order, Hx[:,:, i, j])
         end
     end
     Hx
@@ -45,6 +112,7 @@ function get_coefficients(x_x_I, Hx_x_I, phi_a, order)
     H0 = zeros(Hx_size)
     H0[1] = 1
     Threads.@threads for i=1:n_eval
+        # get moment matrix
         # eq. 5.9
         H_np = Hx_x_I[:, i, :]
         Mx = H_np * (H_np' .* phi_a[i, :])
